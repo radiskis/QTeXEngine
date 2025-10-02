@@ -156,6 +156,7 @@ void QTeXPaintEngine::drawLines ( const QLineF * lines, int lineCount )
 
 		s += drawShape(Line, this->path(path));
 	}
+
 	writeToFile(s);
 }
 
@@ -319,6 +320,9 @@ void QTeXPaintEngine::drawPath ( const QPainterPath & path )
 
 QString QTeXPaintEngine::drawPgfShape(Shape shape, const QString & path)
 {
+	if (path.isEmpty())
+		return QString::null;
+
 	QString stroke_command = path + "\\pgfstroke\n";
 	QString fill_command = path + "\\pgffill\n";
 	switch(shape){
@@ -366,6 +370,9 @@ QString QTeXPaintEngine::drawShape(Shape shape, const QString & path)
 QString QTeXPaintEngine::drawTikzShape(Shape shape, const QString & path)
 {
 	QString s = QString::null;
+	if (path.isEmpty())
+		return s;
+
 	if (shape != Line && shape != Polyline && painter()->brush().style() != Qt::NoBrush)
 		// fill the background
 		s += tikzBrush(painter()->brush()) + path;
@@ -409,7 +416,7 @@ void QTeXPaintEngine::drawPixmap(const QPixmap &pix, const QRectF &r)
 
 	t << "\\pgfputat";
 	t << pgfPoint(convertPoint(painter()->worldMatrix().map(r.bottomLeft())));
-	t << "{\\pgfimage[interpolate=true,width=";
+	t << "{\\pgfimage[interpolate=false,width=";
 
 	QString u = unit();
 	t << QString::number(r.width()*resFactorX()) + u + ",height=";
@@ -671,6 +678,9 @@ QString QTeXPaintEngine::pgfPath(const QPainterPath & path)
 QString QTeXPaintEngine::tikzPath(const QPainterPath & path)
 {
 	QString s = QString::null;
+	if (path.isEmpty())
+		return s;
+
 	int points = path.elementCount();
 	QMatrix m = painter()->worldMatrix();
 	int curvePoints = 0;
