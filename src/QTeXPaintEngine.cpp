@@ -1,12 +1,11 @@
 /***************************************************************************
-    File                 : QTeXPaintEngine.cpp
-    Project              : QTeXEngine GNU GPL v. 3.0
-    --------------------------------------------------------------------
-    Copyright            : (C) 2009 by Ion Vasilief
-    Email (use @ for *)  : ion_vasilief*yahoo.fr
-    Description          : Enables the export of QPainter grafics to .tex files
+	File                 : QTeXPaintEngine.cpp
+	Project              : QTeXEngine GNU GPL v. 3.0
+	--------------------------------------------------------------------
+	Copyright            : (C) 2009 - 2013 by Ion Vasilief
+	Email (use @ for *)  : ion_vasilief*yahoo.fr
+	Description          : Enables the export of QPainter grafics to .tex files
  ***************************************************************************/
-
 /***************************************************************************
  *                                                                         *
  *  This program is free software; you can redistribute it and/or modify   *
@@ -80,14 +79,8 @@ bool QTeXPaintEngine::begin(QPaintDevice* p)
 
 		QString u = unit();
 		t << pictureEnv + u + "}{0" + u + "}{";
-		t << QString::number(p->width()) + u + "}{";
-		t << QString::number(p->height()) + u + "}\n";
-
-		if (!d_pgf_mode){
-			QPainterPath path;
-			path.addRect(QRect(0, 0, p->width(), p->height()));
-			t << "\t\\clip" + tikzPath(path);
-		}
+		t << QString::number(resFactorX()*p->width()) + u + "}{";
+		t << QString::number(resFactorY()*p->height()) + u + "}\n";
 		return true;
 	}
 
@@ -119,7 +112,7 @@ void QTeXPaintEngine::drawPoints ( const QPointF * points, int pointCount )
 	if (emptyStringOperation())
 		return;
 
-	QMatrix m = painter()->worldMatrix();
+	QTransform m = painter()->combinedTransform();
 	double lw = painter()->pen().widthF();
 
 	QString s = QString::null;
@@ -192,7 +185,7 @@ void QTeXPaintEngine::drawTextItem ( const QPointF & p, const QTextItem & textIt
 		d_current_color = painter()->pen().color();
 	}
 
-	QMatrix m = painter()->worldMatrix();
+	QTransform m = painter()->combinedTransform();
 
 	s += "\\pgftext[";
 
@@ -292,7 +285,7 @@ void QTeXPaintEngine::drawEllipse ( const QRectF & rect )
 	if (emptyStringOperation())
 		return;
 
-	QPointF p = painter()->worldMatrix().map(rect.bottomLeft());
+	QPointF p = painter()->combinedTransform().map(rect.bottomLeft());
 
 	QString path;
 	if (d_pgf_mode){
@@ -414,14 +407,16 @@ void QTeXPaintEngine::drawPixmap(const QPixmap &pix, const QRectF &r)
 	QTextStream t(file);
 	t.setCodec("UTF-8");
 
+	QRectF tr = painter()->combinedTransform().mapRect(r);
+
 	t << "\\pgfputat";
-	t << pgfPoint(convertPoint(painter()->worldMatrix().map(r.bottomLeft())));
+	t << pgfPoint(convertPoint(tr.bottomLeft()));
 	t << "{\\pgfimage[interpolate=false,width=";
 
 	QString u = unit();
-	t << QString::number(r.width()*resFactorX()) + u + ",height=";
-	t << QString::number(r.height()*resFactorY()) + u + "]{";
-	t << name;
+	t << QString::number(tr.width()*resFactorX()) + u + ",height=";
+	t << QString::number(tr.height()*resFactorY()) + u + "]{";
+	t << "\"" + name + "\"";
 	t << "}}\n";
 }
 
@@ -466,7 +461,7 @@ QString QTeXPaintEngine::tikzBrush(const QBrush& brush)
 
 	options += "\\fill [pattern color=c, pattern=";
 
-	switch(brush.style()){
+	switch (brush.style()){
 		case Qt::NoBrush:
 			return QString::null;
 		break;
@@ -482,7 +477,7 @@ QString QTeXPaintEngine::tikzBrush(const QBrush& brush)
 			s += "\\fill";
 
 			double alpha = painter()->brush().color().alphaF();
-			if(alpha > 0.0 && alpha < 1.0)
+			if (alpha > 0.0 && alpha < 1.0)
 				s += "[opacity=" + QString::number(alpha) + "]";
 
 			return s;
@@ -526,17 +521,29 @@ QString QTeXPaintEngine::tikzBrush(const QBrush& brush)
 			const QLinearGradient *qtgradient = (const QLinearGradient *)brush.gradient();
 			QGradientStops stops = qtgradient->stops();
 
-			QString lc = defineColor(stops.first().second, "lc");
-			QString rc = defineColor(stops.last().second, "rc");
+			int colorCount = stops.size();
+			QColor c1 = stops.first().second;
+			QString lc = defineColor(c1, "tc");
+			QString rc = defineColor(stops.last().second, "bc");
+			QString mc = (colorCount > 2) ? defineColor(stops.at(1).second, "mc") : "";
 
-			QMatrix m = painter()->worldMatrix();
-			QPointF sp = m.map(qtgradient->start());
-			QPointF ep = m.map(qtgradient->finalStop());
+			options = lc + rc + mc + "\\fill [";
 
-			options = lc + rc + "\\fill [";
-			options += "left color=lc, ";
-			options += "right color=rc, ";
-			options += "shading angle=" + QString::number(-QLineF(sp, ep).angle());
+			double alpha = c1.alphaF();
+			if (alpha > 0.0 && alpha < 1.0)
+				options += "opacity=" + QString::number(alpha) + ", ";
+
+			options += "top color=tc, ";
+			options += "bottom color=bc, ";
+
+			if (colorCount > 2)
+				options += "middle color=mc, ";
+
+			qreal angle = 90 + QLineF(qtgradient->start(), qtgradient->finalStop()).angle();
+			if (angle >= 360)
+				angle -= 360;
+			if (qRound(angle) != 0)
+				options += "shading angle=" + QString::number(angle);
 		}
 		break;
 
@@ -644,7 +651,7 @@ QString QTeXPaintEngine::pgfPath(const QPainterPath & path)
 {
 	QString s = QString::null;
 	int points = path.elementCount();
-	QMatrix m = painter()->worldMatrix();
+	QTransform m = painter()->combinedTransform();
 	int curvePoints = 0;
 	for (int i = 0; i < points; i++){
 		QPainterPath::Element el = path.elementAt(i);
@@ -682,7 +689,7 @@ QString QTeXPaintEngine::tikzPath(const QPainterPath & path)
 		return s;
 
 	int points = path.elementCount();
-	QMatrix m = painter()->worldMatrix();
+	QTransform m = painter()->combinedTransform();
 	int curvePoints = 0;
 	for (int i = 0; i < points; i++){
 		QPainterPath::Element el = path.elementAt(i);
@@ -713,9 +720,9 @@ QString QTeXPaintEngine::tikzPath(const QPainterPath & path)
 	return s + ";\n";
 }
 
-QPointF QTeXPaintEngine::convertPoint( const QPointF& p)
+QPointF QTeXPaintEngine::convertPoint(const QPointF& p)
 {
-	return QPointF(resFactorX()*p.x(), paintDevice()->height() - resFactorY()*p.y());
+	return QPointF(resFactorX()*p.x(), resFactorY()*(paintDevice()->height() - p.y()));
 }
 
 double QTeXPaintEngine::unitFactor()
@@ -752,7 +759,7 @@ double QTeXPaintEngine::resFactorY()
 	return unitFactor()/(double)paintDevice()->logicalDpiY();
 }
 
-QString QTeXPaintEngine::pgfPoint( const QPointF& p)
+QString QTeXPaintEngine::pgfPoint(const QPointF& p)
 {
 	QString u = unit();
 	QString s = "{\\pgfpoint{" + QString::number(p.x());
@@ -768,7 +775,7 @@ QString QTeXPaintEngine::tikzPoint(const QPointF & p)
 	return s;
 }
 
-QString QTeXPaintEngine::color( const QColor& col)
+QString QTeXPaintEngine::color(const QColor& col)
 {
 	QString s = "\\color[";
 	if (d_gray_scale){
@@ -788,7 +795,7 @@ QString QTeXPaintEngine::color( const QColor& col)
 QString QTeXPaintEngine::pgfPen(const QPen& pen)
 {
 	QString s = QString::null;
-	if (pen.style() == Qt::NoPen)
+	if (pen.style() == Qt::NoPen || !pen.color().alpha())
 		return s;
 
 	s += color(pen.color());
@@ -875,7 +882,7 @@ QString QTeXPaintEngine::pgfPen(const QPen& pen)
 
 QString QTeXPaintEngine::tikzPen(const QPen& pen)
 {
-	if (pen.style() == Qt::NoPen)
+	if (pen.style() == Qt::NoPen || !pen.color().alpha())
 		return QString::null;
 
 	QString col = QString::null;
@@ -933,6 +940,10 @@ QString QTeXPaintEngine::tikzPen(const QPen& pen)
 		default:
 			break;
 	}
+
+	double alpha = pen.color().alphaF();
+	if (alpha > 0.0 && alpha < 1.0)
+		options += "opacity=" + QString::number(alpha) + ", ";
 
 	options += "line join=";
 	switch (pen.joinStyle()){

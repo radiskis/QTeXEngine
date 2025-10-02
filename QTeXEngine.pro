@@ -3,6 +3,6 @@ include( config.pri )
 TEMPLATE = subdirs
 
 SUBDIRS = \
-    src \
-    example \
-    test
+	src \
+	#example \
+	#test

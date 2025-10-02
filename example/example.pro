@@ -10,6 +10,6 @@ INCLUDEPATH += ../src
 LIBS        += ../libQTeXEngine.a
 
 HEADERS      = renderarea.h \
-		   pixmaps.h
+			   pixmaps.h
 SOURCES      = main.cpp \
                renderarea.cpp
